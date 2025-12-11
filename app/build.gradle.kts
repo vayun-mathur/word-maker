@@ -10,6 +10,8 @@ android {
         version = release(36)
     }
 
+    ndkVersion = "29.0.14206865"
+
     defaultConfig {
         applicationId = "com.vayunmathur.games.wordmaker"
         minSdk = 30
