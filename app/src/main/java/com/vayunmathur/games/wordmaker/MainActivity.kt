@@ -427,9 +427,7 @@ fun CrosswordBoard(
                                 .size(30.dp)
                                 .padding(1.dp)
                                 .background(
-                                    if (letter != null) colorScheme.primaryContainer else colorScheme.primaryContainer.copy(
-                                        alpha = 0.4f
-                                    ),
+                                    if (letter != null) colorScheme.primaryContainer else colorScheme.secondaryContainer,
                                     RoundedCornerShape(4.dp)
                                 )
                                 .onGloballyPositioned {
