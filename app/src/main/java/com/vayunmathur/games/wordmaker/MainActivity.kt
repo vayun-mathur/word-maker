@@ -425,8 +425,8 @@ fun CrosswordBoard(
                                 .size(30.dp)
                                 .padding(1.dp)
                                 .background(
-                                    if (letter != null) colorScheme.primaryContainer else colorScheme.surfaceVariant.copy(
-                                        alpha = 0.6f
+                                    if (letter != null) colorScheme.primaryContainer else colorScheme.primaryContainer.copy(
+                                        alpha = 0.4f
                                     ),
                                     RoundedCornerShape(4.dp)
                                 )
