@@ -46,7 +46,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -194,7 +193,7 @@ fun WordGameScreen(crosswordData: CrosswordData, levelDataStore: LevelDataStore,
     }) { innerPadding ->
         Box(
             modifier = Modifier
-                .padding(innerPadding)
+                .padding(innerPadding).padding(bottom = 64.dp)
                 .fillMaxSize()
                 .background(colorScheme.background)
                 .onGloballyPositioned {
@@ -541,15 +540,13 @@ fun LetterChooser(
                         val endLetter = selectedLettersIndices[i + 1]
                         val startCenter = letterCenters[startLetter]
                         val endCenter = letterCenters[endLetter]
-                        if (startCenter != null && endCenter != null) {
-                            drawLine(
-                                color = primaryColor,
-                                start = startCenter,
-                                end = endCenter,
-                                strokeWidth = 10f,
-                                cap = StrokeCap.Round
-                            )
-                        }
+                        drawLine(
+                            color = primaryColor,
+                            start = startCenter,
+                            end = endCenter,
+                            strokeWidth = 10f,
+                            cap = StrokeCap.Round
+                        )
                     }
                 }
                 val lastLetter = selectedLettersIndices.lastOrNull()
