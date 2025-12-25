@@ -5,17 +5,15 @@ plugins {
 
 android {
     namespace = "com.vayunmathur.games.wordmaker"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 36
 
     ndkVersion = "29.0.14206865"
 
     defaultConfig {
         applicationId = "com.vayunmathur.games.wordmaker"
         minSdk = 30
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
