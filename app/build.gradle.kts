@@ -12,8 +12,8 @@ android {
     defaultConfig {
         applicationId = "com.vayunmathur.games.wordmaker"
         minSdk = 30
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -27,7 +27,7 @@ android {
 }
 
 dependencies {
-    implementation("com.jsoizo:kotlin-csv-jvm:1.10.0")
+    implementation(libs.kotlin.csv.jvm)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
