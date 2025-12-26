@@ -33,9 +33,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -64,7 +61,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.games.wordmaker.data.LevelDataStore
 import com.vayunmathur.games.wordmaker.ui.theme.WordMakerTheme
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlin.math.cos
@@ -135,7 +135,6 @@ data class AnimatedLetter(
 
 @Composable
 fun WordGameScreen(crosswordData: CrosswordData, levelDataStore: LevelDataStore, currentLevel: Int, dictionary: Dictionary) {
-    val snackbarHostState = remember { SnackbarHostState() }
     val foundWords by levelDataStore.foundWords.collectAsState(initial = emptySet())
     val bonusWords by levelDataStore.bonusWords.collectAsState(initial = emptySet())
     var formedWord by remember(currentLevel) { mutableStateOf("") }
@@ -154,6 +153,10 @@ fun WordGameScreen(crosswordData: CrosswordData, levelDataStore: LevelDataStore,
     var letterChooserPositions by remember(currentLevel) { mutableStateOf<Map<Char, Offset>>(emptyMap()) }
     var wordToAnimate by remember(currentLevel) { mutableStateOf<String?>(null) }
     var animatedLetters by remember(currentLevel) { mutableStateOf<List<AnimatedLetter>>(emptyList()) }
+
+    // Animatables for shaking (we'll animate them directly when submission fails)
+    val wordShakeAnim = remember { Animatable(0f) }
+    val bonusShakeAnim = remember { Animatable(0f) }
 
     LaunchedEffect(wordToAnimate) {
         wordToAnimate?.let { word ->
@@ -188,12 +191,10 @@ fun WordGameScreen(crosswordData: CrosswordData, levelDataStore: LevelDataStore,
 
     val isWon = foundWords.containsAll(crosswordData.solutionWords)
 
-    Scaffold(Modifier.fillMaxSize(), snackbarHost = {
-        SnackbarHost(hostState = snackbarHostState)
-    }) { innerPadding ->
+    Scaffold(Modifier.fillMaxSize()) { innerPadding ->
         Box(
             modifier = Modifier
-                .padding(innerPadding).padding(bottom = 64.dp)
+                .padding(innerPadding)
                 .fillMaxSize()
                 .background(colorScheme.background)
                 .onGloballyPositioned {
@@ -255,53 +256,75 @@ fun WordGameScreen(crosswordData: CrosswordData, levelDataStore: LevelDataStore,
                             formedWord = formedWord,
                             onWordChanged = { formedWord = it },
                             onWordSubmitted = { word ->
-                                if (word in crosswordData.solutionWords) {
-                                    if(word !in foundWords) {
-                                        wordToAnimate = word
-                                    }
-                                } else if (word.length < 3) {
-                                    coroutineScope.launch {
-                                        snackbarHostState.showSnackbar("Words must be at least 3 letters long", withDismissAction = true, duration = SnackbarDuration.Short)
-                                    }
-                                } else if (word.lowercase() in dictionary && word !in bonusWords) {
-                                    coroutineScope.launch {
-                                        snackbarHostState.showSnackbar("Bonus: '$word'", withDismissAction = true, duration = SnackbarDuration.Long)
-                                    }
-                                    coroutineScope.launch {
-                                        animatedWord = word
-                                        animationProgress.snapTo(0f)
-                                        animationProgress.animateTo(
-                                            1f,
-                                            animationSpec = tween(durationMillis = 800)
-                                        )
-                                        levelDataStore.addBonusWord(word)
-                                        animatedWord = null
-                                    }
-                                }
-                                formedWord = ""
-                            },
-                            onWordBoxPositioned = { wordBoxOffset = it },
-                            onLetterPositioned = { char, offset ->
-                                if (letterChooserPositions[char] != offset) {
-                                    letterChooserPositions = letterChooserPositions + (char to offset)
-                                }
-                            }
-                        )
-                    }
-                }
-            }
 
-            FilledIconButton(
-                onClick = { showBonusWordsDialog = true },
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(16.dp)
-                    .padding(bottom = 32.dp)
-                    .onGloballyPositioned { bonusButtonOffset = it.localToRoot(Offset.Zero) },
-                enabled = bonusWords.isNotEmpty()
-            ) {
-                Icon(painterResource(R.drawable.outline_book_2_24), null)
-            }
+                                suspend fun shakeWord() {
+                                    val offsets = listOf(-16f, 12f, -8f, 6f, -3f, 0f)
+                                    for (o in offsets) {
+                                        val state = wordShakeAnim.animateTo(with(density) { o.dp.toPx() }, animationSpec = tween(40)).endState
+                                        while(state.isRunning) delay(30)
+                                    }
+                                }
+                                // Handle submission with shake animations for invalid cases
+                                if (word in crosswordData.solutionWords) {
+                                    if(word !in foundWords) wordToAnimate = word
+                                    else shakeWord()
+                                } else if (word.length < 3) {
+                                    shakeWord()
+                                 } else if (word.lowercase() in dictionary && word !in bonusWords) {
+                                     coroutineScope.launch {
+                                         animatedWord = word
+                                         animationProgress.snapTo(0f)
+                                         animationProgress.animateTo(
+                                             1f,
+                                             animationSpec = tween(durationMillis = 800)
+                                         )
+                                         levelDataStore.addBonusWord(word)
+                                         animatedWord = null
+                                     }
+                                } else if (word.lowercase() in dictionary && word in bonusWords) {
+                                    val j = launch {
+                                        val offsets = listOf(-16f, 12f, -8f, 6f, -3f, 0f)
+                                        // also animate bonus button concurrently across the same offsets
+                                        offsets.forEach { o ->
+                                            bonusShakeAnim.animateTo(
+                                                with(density) { o.dp.toPx() },
+                                                animationSpec = tween(60)
+                                            )
+                                        }
+                                    }
+                                    shakeWord()
+                                    j.join()
+                                 } else {
+                                    shakeWord()
+                                 }
+                                formedWord = ""
+                             },
+                             onWordBoxPositioned = { wordBoxOffset = it },
+                             onLetterPositioned = { char, offset ->
+                                 if (letterChooserPositions[char] != offset) {
+                                     letterChooserPositions = letterChooserPositions + (char to offset)
+                                 }
+                             },
+                            wordShakeTranslation = wordShakeAnim.value
+                         )
+                     }
+                 }
+             }
+
+             FilledIconButton(
+                 onClick = { showBonusWordsDialog = true },
+                 modifier = Modifier
+                     .align(Alignment.BottomStart)
+                     .padding(16.dp)
+                     .padding(bottom = 32.dp)
+                     .onGloballyPositioned { bonusButtonOffset = it.localToRoot(Offset.Zero) }
+                     .graphicsLayer {
+                        translationX = bonusShakeAnim.value
+                     },
+                 enabled = bonusWords.isNotEmpty()
+             ) {
+                 Icon(painterResource(R.drawable.outline_book_2_24), null)
+             }
 
             if (showBonusWordsDialog) {
                 BonusWordsDialog(bonusWords = bonusWords, dictionary) {
@@ -399,8 +422,8 @@ fun BonusWordsDialog(bonusWords: Set<String>, dictionary: Dictionary, onDismiss:
             }
         }
     )
-    if(definitionDialog != null) {
-        DefinitionDialog(word = definitionDialog!!.first, definition = definitionDialog!!.second) {
+    definitionDialog?.let { (w, d) ->
+        DefinitionDialog(word = w, definition = d) {
             definitionDialog = null
         }
     }
@@ -466,75 +489,83 @@ fun CrosswordBoard(
 
 @Composable
 fun LetterChooser(
-    letters: List<Char>,
-    formedWord: String,
-    onWordChanged: (String) -> Unit,
-    onWordSubmitted: (String) -> Unit,
-    onWordBoxPositioned: (Offset) -> Unit,
-    onLetterPositioned: (char: Char, offset: Offset) -> Unit
-) {
-    val angleStep = 2 * Math.PI / letters.size.toDouble()
-    val letterCenters = remember(letters) { mutableStateListOf(*List(letters.size, {Offset.Zero}).toTypedArray()) }
-    var selectedLettersIndices by remember(letters) { mutableStateOf(listOf<Int>()) }
-    var dragStartOffset by remember(letters) { mutableStateOf(Offset.Zero) }
-    var currentDragPosition by remember(letters) { mutableStateOf<Offset?>(null) }
+     letters: List<Char>,
+     formedWord: String,
+     onWordChanged: (String) -> Unit,
+     onWordSubmitted: suspend CoroutineScope.(String) -> Unit,
+     onWordBoxPositioned: (Offset) -> Unit,
+     onLetterPositioned: (char: Char, offset: Offset) -> Unit,
+     wordShakeTranslation: Float
+ ) {
+    val coroutineScope = rememberCoroutineScope()
 
-    val letterCircleRadius = with(LocalDensity.current) { 30.dp.toPx() }
+     val angleStep = 2 * Math.PI / letters.size.toDouble()
+     val letterCenters = remember(letters) { mutableStateListOf(*List(letters.size, {Offset.Zero}).toTypedArray()) }
+     var selectedLettersIndices by remember(letters) { mutableStateOf(listOf<Int>()) }
+     var dragStartOffset by remember(letters) { mutableStateOf(Offset.Zero) }
+     var currentDragPosition by remember(letters) { mutableStateOf<Offset?>(null) }
 
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = formedWord.ifEmpty { " " }, // Show a space to maintain height
-            modifier = Modifier
-                .padding(bottom = 20.dp)
-                .graphicsLayer(alpha = if (selectedLettersIndices.isNotEmpty()) 1f else 0f)
-                .background(colorScheme.primaryContainer, RoundedCornerShape(8.dp))
-                .padding(horizontal = 24.dp, vertical = 8.dp)
-                .height(38.dp)
-                .onGloballyPositioned { onWordBoxPositioned(it.localToRoot(Offset.Zero)) },
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Bold,
-            color = colorScheme.onPrimaryContainer
-        )
+     val letterCircleRadius = with(LocalDensity.current) { 30.dp.toPx() }
 
-        Box(
-            modifier = Modifier
-                .size(250.dp)
-                .onGloballyPositioned {
-                    dragStartOffset = it.localToRoot(Offset.Zero)
-                }
-                .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart = { startOffset ->
-                            currentDragPosition = startOffset
-                            letterCenters.forEachIndexed { idx, center ->
-                                if (distance(startOffset, center) < letterCircleRadius) {
-                                    if (idx !in selectedLettersIndices) {
-                                        selectedLettersIndices += idx
-                                        onWordChanged(selectedLettersIndices.map { letters[it] }.joinToString(""))
-                                    }
-                                }
-                            }
-                        },
-                        onDrag = { change, _ ->
-                            currentDragPosition = change.position
-                            letterCenters.forEachIndexed { idx, center ->
-                                if (distance(change.position, center) < letterCircleRadius) {
-                                    if (idx !in selectedLettersIndices) {
-                                        selectedLettersIndices += idx
-                                        onWordChanged(selectedLettersIndices.map { letters[it] }.joinToString(""))
-                                    } else if (selectedLettersIndices.size > 1 && idx == selectedLettersIndices[selectedLettersIndices.size - 2]) {
-                                        selectedLettersIndices = selectedLettersIndices.dropLast(1)
-                                        onWordChanged(selectedLettersIndices.map { letters[it] }.joinToString(""))
-                                    }
-                                }
-                            }
-                        },
-                        onDragEnd = {
-                            if (selectedLettersIndices.isNotEmpty()) {
-                                onWordSubmitted(selectedLettersIndices.map { letters[it] }.joinToString(""))
-                            }
-                            selectedLettersIndices = emptyList()
-                            currentDragPosition = null
+     // wordShakeTranslation is provided from parent (WordGameScreen) and driven there
+
+     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+         Text(
+             text = formedWord.ifEmpty { " " }, // Show a space to maintain height
+             modifier = Modifier
+                 .padding(bottom = 20.dp)
+                 .graphicsLayer(alpha = if (selectedLettersIndices.isNotEmpty()) 1f else 0f, translationX = wordShakeTranslation)
+                 .background(colorScheme.primaryContainer, RoundedCornerShape(8.dp))
+                 .padding(horizontal = 24.dp, vertical = 8.dp)
+                 .height(38.dp)
+                 .onGloballyPositioned { onWordBoxPositioned(it.localToRoot(Offset.Zero)) },
+             fontSize = 32.sp,
+             fontWeight = FontWeight.Bold,
+             color = colorScheme.onPrimaryContainer
+         )
+
+         Box(
+             modifier = Modifier
+                 .size(250.dp)
+                 .onGloballyPositioned {
+                     dragStartOffset = it.localToRoot(Offset.Zero)
+                 }
+                 .pointerInput(Unit) {
+                     detectDragGestures(
+                         onDragStart = { startOffset ->
+                             currentDragPosition = startOffset
+                             letterCenters.forEachIndexed { idx, center ->
+                                 if (distance(startOffset, center) < letterCircleRadius) {
+                                     if (idx !in selectedLettersIndices) {
+                                         selectedLettersIndices += idx
+                                         onWordChanged(selectedLettersIndices.map { letters[it] }.joinToString(""))
+                                     }
+                                 }
+                             }
+                         },
+                         onDrag = { change, _ ->
+                             currentDragPosition = change.position
+                             letterCenters.forEachIndexed { idx, center ->
+                                 if (distance(change.position, center) < letterCircleRadius) {
+                                     if (idx !in selectedLettersIndices) {
+                                         selectedLettersIndices += idx
+                                         onWordChanged(selectedLettersIndices.map { letters[it] }.joinToString(""))
+                                     } else if (selectedLettersIndices.size > 1 && idx == selectedLettersIndices[selectedLettersIndices.size - 2]) {
+                                         selectedLettersIndices = selectedLettersIndices.dropLast(1)
+                                         onWordChanged(selectedLettersIndices.map { letters[it] }.joinToString(""))
+                                     }
+                                 }
+                             }
+                         },
+                         onDragEnd = {
+                             coroutineScope.launch {
+                                 if (selectedLettersIndices.isNotEmpty()) {
+                                     onWordSubmitted(selectedLettersIndices.map { letters[it] }
+                                         .joinToString(""))
+                                 }
+                                 selectedLettersIndices = emptyList()
+                                 currentDragPosition = null
+                             }
                         }
                     )
                 },
