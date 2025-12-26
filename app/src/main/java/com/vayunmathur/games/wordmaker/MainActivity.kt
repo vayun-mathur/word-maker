@@ -572,7 +572,7 @@ fun LetterChooser(
                         onDragEnd = {
                             coroutineScope.launch {
                                 if (selectedLettersIndices.isNotEmpty()) {
-                                    onWordSubmitted(formedWord)
+                                    onWordSubmitted(selectedLettersIndices.map{letters[it]}.joinToString(""))
                                 }
                                 selectedLettersIndices = emptyList()
                                 currentDragPosition = null
