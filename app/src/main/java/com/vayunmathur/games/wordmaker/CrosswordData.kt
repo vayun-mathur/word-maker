@@ -33,12 +33,18 @@ data class CrosswordData(
     fun winsWith(foundWords: Set<String>): Boolean {
         // consider the fact that "unfound words" might actually be made up by the found words
         val unfoundWords = solutionWords - foundWords
-        val foundLetterPositions = foundWords.map { word ->
-            letterPositions[word]!!
-        }.flatten()
-        val unfoundLetterPositions = unfoundWords.map { word ->
-            letterPositions[word]!!
-        }.flatten()
+
+        // Convert found positions to a Set for O(1) lookup performance
+        val foundLetterPositions = foundWords
+            .mapNotNull { letterPositions[it] }
+            .flatten()
+            .toSet()
+
+        val unfoundLetterPositions = unfoundWords
+            .mapNotNull { letterPositions[it] }
+            .flatten()
+
+        // Now this check is much faster and crash-proof
         return foundLetterPositions.containsAll(unfoundLetterPositions)
     }
 
